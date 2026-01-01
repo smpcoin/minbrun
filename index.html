@@ -184,7 +184,8 @@
                         <h6>1. 设置奖励代币地址</h6>
                         <div class="row align-items-end">
                             <div class="col-md-7">
-                                <input type="text" id="lrbToken" class="form-control" placeholder="代币地址">
+                                <!-- 预设 MiniBTC 代币地址 -->
+                                <input type="text" id="lrbToken" class="form-control" value="0x0F3BA1d1571511DE2295866E91ea4a6C152A7999" placeholder="代币地址">
                             </div>
                             <div class="col-md-3">
                                 <button onclick="callLPRewardBurnFunction('setToken')" class="btn-custom w-100">执行</button>
@@ -253,17 +254,36 @@
                         <div id="lrbMaxBurnPerDayStatus" class="status"></div>
                     </div>
                 </div>
+                
+                <!-- 获取合约 MiniBTC 余额 -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6>5. 获取合约 MiniBTC 余额</h6>
+                        <div class="row align-items-end">
+                            <div class="col-md-7">
+                                <div class="input-group">
+                                    <span class="input-group-text">LPRewardBurn 合约持有</span>
+                                    <input type="text" id="lrbTokenBalance" class="form-control" placeholder="点击下方按钮获取余额" readonly>
+                                    <span class="input-group-text">MiniBTC</span>
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <button onclick="getLPRewardBurnTokenBalance()" class="btn-read w-100">读取余额</button>
+                            </div>
+                        </div>
+                        <div id="lrbTokenBalanceStatus" class="status"></div>
+                    </div>
+                </div>
 
                 <!-- BurnMiniBtc -->
                 <div class="row mb-4">
                     <div class="col-12">
-                        <h6>5. 执行 MiniBTC 销毁</h6>
+                        <h6>6. 执行 MiniBTC 销毁</h6>
                         <div class="row mb-2 align-items-end">
                             <div class="col-md-3">
                                 <input type="number" id="lrbBurnAmount" class="form-control" placeholder="销毁数量（最小单位）" min="1" required>
                             </div>
                             <div class="col-md-3">
-                                <!-- 修改点 1: 日期输入框设为只读并默认显示当前日期 -->
                                 <input type="text" id="lrbBurnDate" class="form-control" placeholder="销毁日期（自动生成）" readonly>
                             </div>
                             <div class="col-md-3">
@@ -285,6 +305,16 @@
         // 全局变量
         let provider, signer, walletAddress;
 
+        // MiniBTC 合约地址 (ERC-20)
+        const miniBTCTokenAddress = "0x0F3BA1d1571511DE2295866E91ea4a6C152A7999";
+        
+        // 标准 ERC-20 ABI (用于查询余额和符号)
+        const erc20ABI = [
+            "function balanceOf(address owner) view returns (uint256)",
+            "function decimals() view returns (uint8)",
+            "function symbol() view returns (string)"
+        ];
+
         // LPRewardBurn ABI
         const lpRewardBurnABI = [
             "function token() view returns (address)",
@@ -301,7 +331,6 @@
 
         // ========== 钱包连接逻辑 ==========
         window.addEventListener('DOMContentLoaded', async () => {
-            // 修改点 2: 页面加载时就设置当前日期
             updateCurrentDate();
 
             if (window.ethereum) {
@@ -337,6 +366,9 @@
             document.getElementById('walletStatus').textContent = `已连接: ${walletAddress.substring(0, 6)}...${walletAddress.substring(38)}`;
             document.getElementById('walletStatus').style.color = '#198754';
             document.getElementById('connectWallet').textContent = '切换钱包';
+
+            // 连接钱包后，自动读取一次余额
+            getLPRewardBurnTokenBalance();
         }
 
         function resetWalletStatus() {
@@ -346,6 +378,7 @@
             document.getElementById('walletStatus').textContent = '未连接钱包';
             document.getElementById('walletStatus').style.color = '#6c757d';
             document.getElementById('connectWallet').textContent = '连接钱包';
+            document.getElementById('lrbTokenBalance').value = '';
         }
 
         document.getElementById('connectWallet').addEventListener('click', async () => {
@@ -431,6 +464,48 @@
             }
         }
 
+        // ========== 新增功能：获取 LPRewardBurn 合约的 MiniBTC 余额 ==========
+        async function getLPRewardBurnTokenBalance() {
+            if (!provider) {
+                return alert('请先连接钱包！');
+            }
+            
+            const lpRewardBurnAddr = document.getElementById('lpRewardBurnAddr').value;
+            if (!ethers.utils.isAddress(lpRewardBurnAddr)) {
+                return alert('LPRewardBurn 合约地址无效！');
+            }
+
+            const statusEl = document.getElementById('lrbTokenBalanceStatus');
+            const balanceEl = document.getElementById('lrbTokenBalance');
+
+            try {
+                statusEl.className = 'status loading';
+                statusEl.textContent = '正在查询余额...';
+
+                const tokenContract = new ethers.Contract(miniBTCTokenAddress, erc20ABI, provider);
+                
+                // 获取余额（最小单位）
+                const balanceBN = await tokenContract.balanceOf(lpRewardBurnAddr);
+                
+                // 获取代币精度
+                const decimals = await tokenContract.decimals();
+                
+                // 格式化余额为可读格式
+                const formattedBalance = ethers.utils.formatUnits(balanceBN, decimals);
+
+                balanceEl.value = formattedBalance;
+                
+                statusEl.className = 'status success';
+                statusEl.textContent = `查询成功！`;
+
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `查询失败: ${error.message}`;
+                console.error('获取余额错误:', error);
+            }
+        }
+
+
         // ========== 读取配置函数 ==========
         // 读取LPRewardBurn配置
         async function readLPRewardBurnConfig(configKey) {
@@ -510,11 +585,9 @@
                         break;
                     case 'BurnMiniBtc':
                         const burnAmount = document.getElementById('lrbBurnAmount').value;
-                        // 修改点 3: 动态生成当前日期，不再从输入框读取
                         const burnDate = getCurrentDateString();
 
                         if (burnAmount < 1) throw new Error('销毁数量必须大于0');
-                        // 日期格式校验可以保留，作为双重保险
                         if (!/^\d{4}-\d{2}-\d{2}$/.test(burnDate)) throw new Error('日期格式错误（应为YYYY-MM-DD）');
                         
                         tx = await contract.BurnMiniBtc(ethers.BigNumber.from(burnAmount), burnDate);
@@ -538,6 +611,11 @@
                 if (configKeyMap[funcName]) {
                     setTimeout(() => readLPRewardBurnConfig(configKeyMap[funcName]), 1000);
                 }
+                // 如果是销毁操作，也重新获取余额
+                if (funcName === 'BurnMiniBtc') {
+                     setTimeout(() => getLPRewardBurnTokenBalance(), 1500);
+                }
+
             } catch (error) {
                 let errorMsg = error.message;
                 if (errorMsg.includes('only owner')) {
@@ -564,16 +642,14 @@
             });
         };
 
-        // 修改点 4: 新增函数，用于获取格式化的当前日期字符串
         function getCurrentDateString() {
             const now = new Date();
             const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0'); // 月份从0开始，需要+1
+            const month = String(now.getMonth() + 1).padStart(2, '0');
             const day = String(now.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
         }
 
-        // 修改点 5: 新增函数，用于更新日期输入框的显示值
         function updateCurrentDate() {
             const dateInput = document.getElementById('lrbBurnDate');
             if (dateInput) {
