@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LPRewardBurn 合约管理面板</title>
+    <!-- Bootstrap 样式 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Ethers.js -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <style>
+        /* 通用样式 */
+        body {
+            background-color: #f5f7fa;
+            padding-bottom: 50px;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .header-bar {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+        .contract-card {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 25px;
+            margin-bottom: 30px;
+        }
+        .contract-card h4 {
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-label {
+            font-weight: 600;
+            color: #34495e;
+        }
+        .btn-custom {
+            background-color: #3498db;
+            color: #fff;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        .btn-custom:hover {
+            background-color: #2980b9;
+            color: #fff;
+        }
+        .btn-custom:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .btn-read {
+            background-color: #2ecc71;
+            color: #fff;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            margin-left: 10px;
+            transition: all 0.3s;
+        }
+        .btn-read:hover {
+            background-color: #27ae60;
+            color: #fff;
+        }
+        .btn-unlock {
+            font-size: 0.8em;
+            color: #999;
+            cursor: pointer;
+            margin-left: 5px;
+        }
+        .btn-unlock:hover {
+            color: #3498db;
+        }
+        /* 状态提示 */
+        .status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 5px;
+            display: none;
+        }
+        .status.loading {
+            display: block;
+            background-color: #f8f9fa;
+            color: #0d6efd;
+        }
+        .status.success {
+            display: block;
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            display: block;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        /* 折叠面板 */
+        .collapse-btn {
+            background: none;
+            border: none;
+            color: #3498db;
+            font-size: 0.9em;
+            cursor: pointer;
+        }
+        .collapse-content {
+            margin-top: 15px;
+        }
+        /* 地址/数值校验 */
+        .is-invalid {
+            border-color: #dc3545 !important;
+        }
+        .invalid-feedback {
+            display: block;
+            color: #dc3545;
+            font-size: 0.85em;
+            margin-top: 5px;
+        }
+        /* 只读样式 */
+        .addr-input[readonly], .form-control[readonly] {
+            background-color: #f8f9fa;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <!-- 头部：钱包连接 + 合约地址配置 -->
+        <div class="header-bar">
+            <div class="row align-items-center">
+                <div class="col-md-4 mb-3 mb-md-0">
+                    <h3>LPRewardBurn 合约管理面板</h3>
+                </div>
+                <div class="col-md-8">
+                    <!-- 钱包连接 -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <button id="connectWallet" class="btn-custom w-100">连接钱包</button>
+                            <div id="walletStatus" class="mt-2 text-muted">未连接钱包</div>
+                        </div>
+                        <div class="col-md-6">
+                            <select id="chainSelector" class="form-control">
+                                <option value="56">BSC 主网 (56)</option>
+                                <option value="97">BSC 测试网 (97)</option>
+                                <option value="1">以太坊主网 (1)</option>
+                                <option value="5">以太坊测试网 Goerli (5)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- LPRewardBurn 合约地址配置（预设地址） -->
+                    <div class="row">
+                        <div class="col-md-4 mb-2">
+                            <label class="form-label">LPRewardBurn 地址
+                                <span class="btn-unlock" onclick="unlockInput('lpRewardBurnAddr')">🔓 解锁</span>
+                            </label>
+                            <input type="text" id="lpRewardBurnAddr" class="form-control addr-input" 
+                                value="0x3Bf12a0C5215F0e3F306545176933c88D342b6D7" readonly placeholder="0x...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LPRewardBurn 合约管理 -->
+        <div class="contract-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <h4>LPRewardBurn 合约配置</h4>
+                <button class="collapse-btn" onclick="toggleCollapse('lpRewardBurnCollapse')">收起 ▲</button>
+            </div>
+            <div id="lpRewardBurnCollapse" class="collapse-content">
+                <!-- setToken -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6>1. 设置奖励代币地址</h6>
+                        <div class="row align-items-end">
+                            <div class="col-md-7">
+                                <input type="text" id="lrbToken" class="form-control" placeholder="代币地址">
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="callLPRewardBurnFunction('setToken')" class="btn-custom w-100">执行</button>
+                            </div>
+                            <div class="col-md-2">
+                                <button onclick="readLPRewardBurnConfig('token')" class="btn-read w-100">读取当前值</button>
+                            </div>
+                        </div>
+                        <div id="lrbTokenStatus" class="status"></div>
+                    </div>
+                </div>
+
+                <!-- setRewardSigner -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6>2. 设置奖励签名者地址</h6>
+                        <div class="row align-items-end">
+                            <div class="col-md-7">
+                                <input type="text" id="lrbRewardSigner" class="form-control" placeholder="签名者地址">
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="callLPRewardBurnFunction('setRewardSigner')" class="btn-custom w-100">执行</button>
+                            </div>
+                            <div class="col-md-2">
+                                <button onclick="readLPRewardBurnConfig('rewardSigner')" class="btn-read w-100">读取当前值</button>
+                            </div>
+                        </div>
+                        <div id="lrbRewardSignerStatus" class="status"></div>
+                    </div>
+                </div>
+
+                <!-- setBurnBlackHole -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6>3. 设置销毁黑洞地址</h6>
+                        <div class="row align-items-end">
+                            <div class="col-md-7">
+                                <input type="text" id="lrbBurnBlackHole" class="form-control" placeholder="黑洞地址（默认0x000000000000000000000000000000000000dEaD）">
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="callLPRewardBurnFunction('setBurnBlackHole')" class="btn-custom w-100">执行</button>
+                            </div>
+                            <div class="col-md-2">
+                                <button onclick="readLPRewardBurnConfig('burnBlackHole')" class="btn-read w-100">读取当前值</button>
+                            </div>
+                        </div>
+                        <div id="lrbBurnBlackHoleStatus" class="status"></div>
+                    </div>
+                </div>
+
+                <!-- setMaxBurnPerDay -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6>4. 设置每日最大销毁量</h6>
+                        <div class="row align-items-end">
+                            <div class="col-md-7">
+                                <input type="number" id="lrbMaxBurnPerDay" class="form-control" placeholder="最大销毁量（最小单位）" min="0">
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="callLPRewardBurnFunction('setMaxBurnPerDay')" class="btn-custom w-100">执行</button>
+                            </div>
+                            <div class="col-md-2">
+                                <button onclick="readLPRewardBurnConfig('maxBurnPerDay')" class="btn-read w-100">读取当前值</button>
+                            </div>
+                        </div>
+                        <div id="lrbMaxBurnPerDayStatus" class="status"></div>
+                    </div>
+                </div>
+
+                <!-- BurnMiniBtc -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <h6>5. 执行 MiniBTC 销毁</h6>
+                        <div class="row mb-2 align-items-end">
+                            <div class="col-md-3">
+                                <input type="number" id="lrbBurnAmount" class="form-control" placeholder="销毁数量（最小单位）" min="1" required>
+                            </div>
+                            <div class="col-md-3">
+                                <!-- 修改点 1: 日期输入框设为只读并默认显示当前日期 -->
+                                <input type="text" id="lrbBurnDate" class="form-control" placeholder="销毁日期（自动生成）" readonly>
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="callLPRewardBurnFunction('BurnMiniBtc')" class="btn-custom w-100">执行销毁</button>
+                            </div>
+                            <div class="col-md-3">
+                                <button onclick="readLPRewardBurnConfig('lastBurnInfo')" class="btn-read w-100">读取销毁信息</button>
+                            </div>
+                        </div>
+                        <div id="lrbBurnMiniBtcStatus" class="status"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 核心交互脚本 -->
+    <script>
+        // 全局变量
+        let provider, signer, walletAddress;
+
+        // LPRewardBurn ABI
+        const lpRewardBurnABI = [
+            "function token() view returns (address)",
+            "function rewardSigner() view returns (address)",
+            "function burnBlackHole() view returns (address)",
+            "function MAX_BURN_PER_DAY() view returns (uint256)",
+            "function lastBurnTime() view returns (uint256)",
+            "function setToken(address _token) external",
+            "function setRewardSigner(address _signer) external",
+            "function setBurnBlackHole(address _burnBlackHole) external",
+            "function setMaxBurnPerDay(uint256 _max) external",
+            "function BurnMiniBtc(uint256 burnAmount, string calldata burnDate) external"
+        ];
+
+        // ========== 钱包连接逻辑 ==========
+        window.addEventListener('DOMContentLoaded', async () => {
+            // 修改点 2: 页面加载时就设置当前日期
+            updateCurrentDate();
+
+            if (window.ethereum) {
+                try {
+                    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                    if (accounts.length > 0) {
+                        initWallet(accounts[0]);
+                    }
+                } catch (err) {
+                    console.log('检查钱包状态失败:', err);
+                }
+
+                window.ethereum.on('accountsChanged', (accounts) => {
+                    if (accounts.length > 0) {
+                        initWallet(accounts[0]);
+                    } else {
+                        resetWalletStatus();
+                    }
+                });
+
+                window.ethereum.on('chainChanged', (chainId) => {
+                    window.location.reload();
+                });
+            }
+        });
+
+        async function initWallet(addr) {
+            walletAddress = addr;
+            provider = new ethers.providers.Web3Provider(window.ethereum, 'any');
+            await provider.send('eth_requestAccounts', []);
+            signer = provider.getSigner();
+            
+            document.getElementById('walletStatus').textContent = `已连接: ${walletAddress.substring(0, 6)}...${walletAddress.substring(38)}`;
+            document.getElementById('walletStatus').style.color = '#198754';
+            document.getElementById('connectWallet').textContent = '切换钱包';
+        }
+
+        function resetWalletStatus() {
+            walletAddress = null;
+            provider = null;
+            signer = null;
+            document.getElementById('walletStatus').textContent = '未连接钱包';
+            document.getElementById('walletStatus').style.color = '#6c757d';
+            document.getElementById('connectWallet').textContent = '连接钱包';
+        }
+
+        document.getElementById('connectWallet').addEventListener('click', async () => {
+            if (!window.ethereum) {
+                alert('请安装MetaMask钱包（或其他EVM兼容钱包）！');
+                return;
+            }
+
+            try {
+                const accounts = await window.ethereum.request({ 
+                    method: 'eth_requestAccounts'
+                });
+
+                if (accounts.length === 0) {
+                    throw new Error('未授权任何账户');
+                }
+
+                initWallet(accounts[0]);
+            } catch (error) {
+                document.getElementById('walletStatus').textContent = `连接失败: ${error.message}`;
+                document.getElementById('walletStatus').style.color = '#dc3545';
+                console.error('钱包连接错误:', error);
+            }
+        });
+
+        // 切换链逻辑
+        document.getElementById('chainSelector').addEventListener('change', async (e) => {
+            if (!window.ethereum) {
+                alert('请安装MetaMask钱包！');
+                return;
+            }
+
+            const chainId = e.target.value;
+            const hexChainId = ethers.utils.hexValue(parseInt(chainId));
+
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: hexChainId }],
+                });
+            } catch (switchError) {
+                if (switchError.code === 4902) {
+                    alert(`当前钱包未添加该链，请手动添加链ID ${chainId} 后重试！`);
+                } else {
+                    alert(`切换链失败: ${switchError.message}`);
+                }
+            }
+        });
+
+        // 解锁/锁定输入框
+        function unlockInput(id) {
+            const input = document.getElementById(id);
+            if (input.readOnly) {
+                input.readOnly = false;
+                input.style.backgroundColor = '#fff';
+                input.style.cursor = 'text';
+                const unlockBtn = input.parentElement.querySelector('.btn-unlock');
+                unlockBtn.textContent = '🔒 锁定';
+                unlockBtn.onclick = () => lockInput(id);
+            }
+        }
+
+        function lockInput(id) {
+            const input = document.getElementById(id);
+            input.readOnly = true;
+            input.style.backgroundColor = '#f8f9fa';
+            input.style.cursor = 'not-allowed';
+            const unlockBtn = input.parentElement.querySelector('.btn-unlock');
+            unlockBtn.textContent = '🔓 解锁';
+            unlockBtn.onclick = () => unlockInput(id);
+        }
+
+        // 折叠/展开面板
+        function toggleCollapse(id) {
+            const content = document.getElementById(id);
+            const btn = content.parentElement.querySelector('.collapse-btn');
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                btn.textContent = '收起 ▲';
+            } else {
+                content.style.display = 'none';
+                btn.textContent = '展开 ▼';
+            }
+        }
+
+        // ========== 读取配置函数 ==========
+        // 读取LPRewardBurn配置
+        async function readLPRewardBurnConfig(configKey) {
+            if (!provider) return alert('请先连接钱包！');
+            const contractAddr = document.getElementById('lpRewardBurnAddr').value;
+            if (!ethers.utils.isAddress(contractAddr)) return alert('LPRewardBurn地址无效！');
+            
+            const contract = new ethers.Contract(contractAddr, lpRewardBurnABI, provider);
+            const statusEl = document.getElementById(`lrb${configKey.charAt(0).toUpperCase() + configKey.slice(1)}Status`) || document.getElementById('lrbBurnMiniBtcStatus');
+            
+            try {
+                statusEl.className = 'status loading';
+                statusEl.textContent = '正在读取配置...';
+                
+                let value;
+                switch(configKey) {
+                    case 'token': value = await contract.token(); break;
+                    case 'rewardSigner': value = await contract.rewardSigner(); break;
+                    case 'burnBlackHole': value = await contract.burnBlackHole(); break;
+                    case 'maxBurnPerDay': value = await contract.MAX_BURN_PER_DAY(); break;
+                    case 'lastBurnInfo':
+                        const lastTime = await contract.lastBurnTime();
+                        const maxBurn = await contract.MAX_BURN_PER_DAY();
+                        const remainingTime = lastTime + 86400 - Math.floor(Date.now()/1000);
+                        let timeText = remainingTime > 0 ? `${Math.floor(remainingTime/3600)}小时${Math.floor((remainingTime%3600)/60)}分钟` : '可立即销毁';
+                        statusEl.className = 'status success';
+                        statusEl.textContent = `最后销毁时间: ${new Date(lastTime * 1000).toLocaleString()}, 每日最大销毁量: ${maxBurn}, 下次销毁时间: ${timeText}`;
+                        return;
+                    default: return alert('无效的配置项！');
+                }
+                
+                document.getElementById(`lrb${configKey.charAt(0).toUpperCase() + configKey.slice(1)}`).value = value;
+                
+                statusEl.className = 'status success';
+                statusEl.textContent = `读取成功: ${value}`;
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = `读取失败: ${error.message}`;
+            }
+        }
+
+        // ========== 执行设置函数 ==========
+        // 执行LPRewardBurn函数
+        async function callLPRewardBurnFunction(funcName) {
+            if (!provider || !signer) return alert('请先连接钱包！');
+            const contractAddr = document.getElementById('lpRewardBurnAddr').value;
+            if (!ethers.utils.isAddress(contractAddr)) return alert('LPRewardBurn地址无效！');
+            
+            const contract = new ethers.Contract(contractAddr, lpRewardBurnABI, signer);
+            const statusEl = document.getElementById(`lrb${funcName.charAt(0).toUpperCase() + funcName.slice(1)}Status`) || document.getElementById('lrbBurnMiniBtcStatus');
+            
+            try {
+                statusEl.className = 'status loading';
+                statusEl.textContent = '交易处理中，请等待...';
+                
+                let tx;
+                switch(funcName) {
+                    case 'setToken':
+                        const tokenAddr = document.getElementById('lrbToken').value;
+                        if (!ethers.utils.isAddress(tokenAddr)) throw new Error('奖励代币地址无效');
+                        tx = await contract.setToken(tokenAddr);
+                        break;
+                    case 'setRewardSigner':
+                        const signerAddr = document.getElementById('lrbRewardSigner').value;
+                        if (!ethers.utils.isAddress(signerAddr)) throw new Error('奖励签名者地址无效');
+                        tx = await contract.setRewardSigner(signerAddr);
+                        break;
+                    case 'setBurnBlackHole':
+                        const blackHoleAddr = document.getElementById('lrbBurnBlackHole').value || '0x000000000000000000000000000000000000dEaD';
+                        if (!ethers.utils.isAddress(blackHoleAddr)) throw new Error('黑洞地址无效');
+                        tx = await contract.setBurnBlackHole(blackHoleAddr);
+                        break;
+                    case 'setMaxBurnPerDay':
+                        const maxBurn = document.getElementById('lrbMaxBurnPerDay').value;
+                        if (maxBurn < 0) throw new Error('每日最大销毁量不能为负数');
+                        tx = await contract.setMaxBurnPerDay(ethers.BigNumber.from(maxBurn));
+                        break;
+                    case 'BurnMiniBtc':
+                        const burnAmount = document.getElementById('lrbBurnAmount').value;
+                        // 修改点 3: 动态生成当前日期，不再从输入框读取
+                        const burnDate = getCurrentDateString();
+
+                        if (burnAmount < 1) throw new Error('销毁数量必须大于0');
+                        // 日期格式校验可以保留，作为双重保险
+                        if (!/^\d{4}-\d{2}-\d{2}$/.test(burnDate)) throw new Error('日期格式错误（应为YYYY-MM-DD）');
+                        
+                        tx = await contract.BurnMiniBtc(ethers.BigNumber.from(burnAmount), burnDate);
+                        break;
+                    default:
+                        throw new Error(`不支持的函数: ${funcName}`);
+                }
+
+                await tx.wait();
+                statusEl.className = 'status success';
+                statusEl.textContent = '操作成功！交易哈希: ' + tx.hash.substring(0, 10) + '...';
+                
+                // 重新读取配置
+                const configKeyMap = {
+                    'setToken': 'token',
+                    'setRewardSigner': 'rewardSigner',
+                    'setBurnBlackHole': 'burnBlackHole',
+                    'setMaxBurnPerDay': 'maxBurnPerDay',
+                    'BurnMiniBtc': 'lastBurnInfo'
+                };
+                if (configKeyMap[funcName]) {
+                    setTimeout(() => readLPRewardBurnConfig(configKeyMap[funcName]), 1000);
+                }
+            } catch (error) {
+                let errorMsg = error.message;
+                if (errorMsg.includes('only owner')) {
+                    errorMsg = '执行失败：仅合约拥有者可调用该函数';
+                } else if (errorMsg.includes('invalid address')) {
+                    errorMsg = '执行失败：无效的地址格式';
+                } else if (errorMsg.length > 100) {
+                    errorMsg = errorMsg.substring(0, 100) + '...';
+                }
+                
+                statusEl.className = 'status error';
+                statusEl.textContent = `执行失败: ${errorMsg}`;
+                console.error('LPRewardBurn执行错误:', error);
+            }
+        }
+
+        // 页面初始化：默认展开所有面板
+        window.onload = function() {
+            document.querySelectorAll('.collapse-content').forEach(el => {
+                el.style.display = 'block';
+            });
+            document.querySelectorAll('.collapse-btn').forEach(btn => {
+                btn.textContent = '收起 ▲';
+            });
+        };
+
+        // 修改点 4: 新增函数，用于获取格式化的当前日期字符串
+        function getCurrentDateString() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0'); // 月份从0开始，需要+1
+            const day = String(now.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // 修改点 5: 新增函数，用于更新日期输入框的显示值
+        function updateCurrentDate() {
+            const dateInput = document.getElementById('lrbBurnDate');
+            if (dateInput) {
+                dateInput.value = getCurrentDateString();
+            }
+        }
+    </script>
+</body>
+</html>
